@@ -9,7 +9,7 @@ const RATE_LIMIT_MAX_REQUESTS = 100; // Max requests per minute
 
 // Backend API base URL
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? '/api'
+  ? '/api/ai'
   : 'http://localhost:3000/api/ai';
 
 export const CHAT_MODEL = "mistral-small"; // Free-tier compatible model

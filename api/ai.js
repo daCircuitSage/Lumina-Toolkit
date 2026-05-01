@@ -1,24 +1,4 @@
-import express from "express";
 import { Mistral } from '@mistralai/mistralai';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
-const app = express();
-
-// CORS middleware
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
-});
-
-app.use(express.json());
 
 const apiKey = process.env.MISTRAL_API_KEY;
 
@@ -108,204 +88,202 @@ async function retryWithBackoff(operation, maxRetries = 3, baseDelay = 1000) {
   throw lastError;
 }
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    service: apiKey ? 'configured' : 'not_configured',
-    provider: 'mistral'
-  });
-});
-
-// Chat endpoint
-app.post('/chat', async (req, res) => {
-  try {
-    const { message, history, userId } = req.body;
-    
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
-    if (!checkRateLimit(userId)) {
-      return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
-    }
-
-    if (!apiKey) {
-      return res.status(500).json({ error: 'AI service not configured' });
-    }
-
-    const systemInstruction = "You are a helpful, intelligent AI assistant inside a productivity SaaS platform called Lumina Toolkit. You help users with writing, coding, learning, and general questions. Keep responses clear, practical, and human-like.";
-    
-    const cacheKey = getCacheKey(message, systemInstruction);
-    const cachedResponse = getCachedResponse(cacheKey);
-    if (cachedResponse) {
-      return res.json({ response: cachedResponse });
-    }
-
-    const response = await retryWithBackoff(async () => {
-      return await mistral.chat.complete({
-        model: "mistral-small",
-        messages: [
-          { role: 'system', content: systemInstruction },
-          ...(history || []).map((msg) => {
-            const role = msg.role === 'user' ? 'user' : 'assistant';
-            return {
-              role: role,
-              content: msg.content
-            };
-          }).filter(msg => msg && msg.content),
-          { role: 'user', content: message }
-        ],
-        temperature: 0.7,
-        maxTokens: 2000
-      });
-    });
-
-    const responseText = (response.choices?.[0]?.message?.content) || '';
-    
-    if (responseText) {
-      setCachedResponse(cacheKey, responseText);
-    }
-    
-    res.json({ response: responseText });
-  } catch (error) {
-    console.error('Chat API error:', error);
-    const statusCode = error.message.includes('authentication') ? 401 : 
-                      error.message.includes('Rate limit') ? 429 : 500;
-    res.status(statusCode).json({ 
-      error: error.message || 'Chat service unavailable' 
-    });
+// Main handler function for Vercel
+export default async function handler(req, res) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
   }
-});
 
-// Generate content endpoint
-app.post('/generate', async (req, res) => {
+  const { url, method } = req;
+  
   try {
-    const { prompt, systemInstruction, userId, options } = req.body;
-    
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt is required' });
+    // Health check endpoint
+    if (url === '/health' && method === 'GET') {
+      return res.json({ 
+        status: 'ok', 
+        service: apiKey ? 'configured' : 'not_configured',
+        provider: 'mistral'
+      });
     }
 
-    if (!checkRateLimit(userId)) {
-      return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
-    }
+    // Chat endpoint
+    if (url === '/chat' && method === 'POST') {
+      const { message, history, userId } = req.body;
+      
+      if (!message) {
+        return res.status(400).json({ error: 'Message is required' });
+      }
 
-    if (!apiKey) {
-      return res.status(500).json({ error: 'AI service not configured' });
-    }
+      if (!checkRateLimit(userId)) {
+        return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
+      }
 
-    const {
-      temperature = 0.7,
-      maxTokens = 2000,
-      model = "mistral-small",
-      useCache = true
-    } = options || {};
+      if (!apiKey) {
+        return res.status(500).json({ error: 'AI service not configured' });
+      }
 
-    const finalSystemInstruction = systemInstruction || "You are a helpful AI assistant.";
-    
-    if (useCache) {
-      const cacheKey = getCacheKey(prompt, finalSystemInstruction);
+      const systemInstruction = "You are a helpful, intelligent AI assistant inside a productivity SaaS platform called Lumina Toolkit. You help users with writing, coding, learning, and general questions. Keep responses clear, practical, and human-like.";
+      
+      const cacheKey = getCacheKey(message, systemInstruction);
       const cachedResponse = getCachedResponse(cacheKey);
       if (cachedResponse) {
         return res.json({ response: cachedResponse });
       }
-    }
 
-    const response = await retryWithBackoff(async () => {
-      return await mistral.chat.complete({
-        model,
-        messages: [
-          { role: 'system', content: finalSystemInstruction },
-          { role: 'user', content: prompt }
-        ],
-        temperature,
-        maxTokens
+      const response = await retryWithBackoff(async () => {
+        return await mistral.chat.complete({
+          model: "mistral-small",
+          messages: [
+            { role: 'system', content: systemInstruction },
+            ...(history || []).map((msg) => {
+              const role = msg.role === 'user' ? 'user' : 'assistant';
+              return {
+                role: role,
+                content: msg.content
+              };
+            }).filter(msg => msg && msg.content),
+            { role: 'user', content: message }
+          ],
+          temperature: 0.7,
+          maxTokens: 2000
+        });
       });
-    });
 
-    const responseText = (response.choices?.[0]?.message?.content) || '';
-    
-    if (responseText && useCache) {
-      setCachedResponse(getCacheKey(prompt, finalSystemInstruction), responseText);
-    }
-    
-    res.json({ response: responseText });
-  } catch (error) {
-    console.error('Generate API error:', error);
-    const statusCode = error.message.includes('authentication') ? 401 : 
-                      error.message.includes('Rate limit') ? 429 : 500;
-    res.status(statusCode).json({ 
-      error: error.message || 'Generation service unavailable' 
-    });
-  }
-});
-
-// Structured response endpoint
-app.post('/generate-structured', async (req, res) => {
-  try {
-    const { prompt, systemInstruction, userId, options } = req.body;
-    
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt is required' });
-    }
-
-    if (!checkRateLimit(userId)) {
-      return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
-    }
-
-    if (!apiKey) {
-      return res.status(500).json({ error: 'AI service not configured' });
-    }
-
-    const {
-      temperature = 0.7,
-      maxTokens = 2000,
-      model = "mistral-small"
-    } = options || {};
-
-    const finalSystemInstruction = (systemInstruction || "You are a helpful AI assistant.") + " You always respond with valid JSON.";
-    const finalPrompt = prompt + "\n\nIMPORTANT: Respond with valid JSON only, no other text.";
-    
-    const response = await retryWithBackoff(async () => {
-      return await mistral.chat.complete({
-        model,
-        messages: [
-          { role: 'system', content: finalSystemInstruction },
-          { role: 'user', content: finalPrompt }
-        ],
-        temperature,
-        maxTokens
-      });
-    });
-
-    const responseText = (response.choices?.[0]?.message?.content) || '';
-    
-    try {
-      // Try to extract JSON from the response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parsedResponse = JSON.parse(jsonMatch[0]);
-        return res.json({ response: parsedResponse });
+      const responseText = (response.choices?.[0]?.message?.content) || '';
+      
+      if (responseText) {
+        setCachedResponse(cacheKey, responseText);
       }
       
-      // Fallback: try parsing the entire response
-      const parsedResponse = JSON.parse(responseText);
-      res.json({ response: parsedResponse });
-    } catch (parseError) {
-      console.error('Failed to parse AI response as JSON:', parseError);
-      res.status(500).json({ 
-        error: "AI service returned an invalid format. Please try again." 
-      });
+      return res.json({ response: responseText });
     }
+
+    // Generate content endpoint
+    if (url === '/generate' && method === 'POST') {
+      const { prompt, systemInstruction, userId, options } = req.body;
+      
+      if (!prompt) {
+        return res.status(400).json({ error: 'Prompt is required' });
+      }
+
+      if (!checkRateLimit(userId)) {
+        return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
+      }
+
+      if (!apiKey) {
+        return res.status(500).json({ error: 'AI service not configured' });
+      }
+
+      const {
+        temperature = 0.7,
+        maxTokens = 2000,
+        model = "mistral-small",
+        useCache = true
+      } = options || {};
+
+      const finalSystemInstruction = systemInstruction || "You are a helpful AI assistant.";
+      
+      if (useCache) {
+        const cacheKey = getCacheKey(prompt, finalSystemInstruction);
+        const cachedResponse = getCachedResponse(cacheKey);
+        if (cachedResponse) {
+          return res.json({ response: cachedResponse });
+        }
+      }
+
+      const response = await retryWithBackoff(async () => {
+        return await mistral.chat.complete({
+          model,
+          messages: [
+            { role: 'system', content: finalSystemInstruction },
+            { role: 'user', content: prompt }
+          ],
+          temperature,
+          maxTokens
+        });
+      });
+
+      const responseText = (response.choices?.[0]?.message?.content) || '';
+      
+      if (responseText && useCache) {
+        setCachedResponse(getCacheKey(prompt, finalSystemInstruction), responseText);
+      }
+      
+      return res.json({ response: responseText });
+    }
+
+    // Structured response endpoint
+    if (url === '/generate-structured' && method === 'POST') {
+      const { prompt, systemInstruction, userId, options } = req.body;
+      
+      if (!prompt) {
+        return res.status(400).json({ error: 'Prompt is required' });
+      }
+
+      if (!checkRateLimit(userId)) {
+        return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
+      }
+
+      if (!apiKey) {
+        return res.status(500).json({ error: 'AI service not configured' });
+      }
+
+      const {
+        temperature = 0.7,
+        maxTokens = 2000,
+        model = "mistral-small"
+      } = options || {};
+
+      const finalSystemInstruction = (systemInstruction || "You are a helpful AI assistant.") + " You always respond with valid JSON.";
+      const finalPrompt = prompt + "\n\nIMPORTANT: Respond with valid JSON only, no other text.";
+      
+      const response = await retryWithBackoff(async () => {
+        return await mistral.chat.complete({
+          model,
+          messages: [
+            { role: 'system', content: finalSystemInstruction },
+            { role: 'user', content: finalPrompt }
+          ],
+          temperature,
+          maxTokens
+        });
+      });
+
+      const responseText = (response.choices?.[0]?.message?.content) || '';
+      
+      try {
+        // Try to extract JSON from the response
+        const jsonMatch = responseText.match(/\{[\s\S]*\}|\[[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsedResponse = JSON.parse(jsonMatch[0]);
+          return res.json({ response: parsedResponse });
+        }
+        
+        // Fallback: try parsing the entire response
+        const parsedResponse = JSON.parse(responseText);
+        return res.json({ response: parsedResponse });
+      } catch (parseError) {
+        console.error('Failed to parse AI response as JSON:', parseError);
+        return res.status(500).json({ 
+          error: "AI service returned an invalid format. Please try again." 
+        });
+      }
+    }
+
+    // 404 for unknown endpoints
+    return res.status(404).json({ error: 'Endpoint not found' });
+
   } catch (error) {
-    console.error('Structured generate API error:', error);
+    console.error('API error:', error);
     const statusCode = error.message.includes('authentication') ? 401 : 
                       error.message.includes('Rate limit') ? 429 : 500;
-    res.status(statusCode).json({ 
-      error: error.message || 'Generation service unavailable' 
+    return res.status(statusCode).json({ 
+      error: error.message || 'AI service unavailable' 
     });
   }
-});
-
-export default app;
+}
