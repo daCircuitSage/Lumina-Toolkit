@@ -16,7 +16,7 @@ import {
   Eye,
   Type
 } from 'lucide-react';
-import { generateAiContent } from '../../services/mistralService';
+import { generateCoverLetter } from '../../services/mistralService';
 import { cn } from '../../lib/utils';
 import { jsPDF } from 'jspdf';
 import SeoContent from '../../components/SeoContent';
@@ -57,11 +57,11 @@ export default function CoverLetter() {
     `;
 
     try {
-      const response = await generateAiContent(prompt, "You are a world-class professional career writer who specializes in getting candidates interviews at top tech companies.");
-      setLetter(response);
+      const response = await generateCoverLetter(formData.role, formData.company, formData.experience, formData.tone);
+      setLetter(response.coverLetter);
     } catch (error) {
       console.error(error);
-      alert("AI generator is busy. Please try again in a moment.");
+      alert(error instanceof Error ? error.message : "AI generator is busy. Please try again in a moment.");
     } finally {
       setIsGenerating(false);
     }

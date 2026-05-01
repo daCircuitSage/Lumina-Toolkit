@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { MessageSquare, Sparkles, Copy, Check, Loader2, Wand2, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { generateAiContent } from '../services/mistralService';
+import { generateCaptions } from '../services/mistralService';
 import SeoContent from '../components/SeoContent';
 
 export default function AiCaption() {
@@ -19,15 +19,8 @@ export default function AiCaption() {
     setResults([]);
 
     try {
-      const systemPrompt = "You are a professional social media copywriter. Generate 3 engaging captions based on user input. Keep tone natural, platform-appropriate, and creative. Separate each caption with [SEP].";
-      const prompt = `Platform: ${platform}\nTone: ${tone}\nDescription: ${input}`;
-      
-      const aiText = await generateAiContent(prompt, systemPrompt);
-
-      if (aiText) {
-        const captions = aiText.split('[SEP]').map((c: string) => c.trim()).filter(Boolean);
-        setResults(captions.length ? captions : [aiText]);
-      }
+      const captions = await generateCaptions(platform, tone, input);
+      setResults(captions);
     } catch (error) {
       console.error(error);
       alert(error instanceof Error ? error.message : 'Failed to generate results');

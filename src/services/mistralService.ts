@@ -50,6 +50,29 @@ async function callBackendAPI(endpoint: string, data: any): Promise<any> {
   }
 }
 
+// Specific API functions for each feature
+export async function generateCaptions(platform: string, tone: string, description: string, userId?: string): Promise<string[]> {
+  const response = await callBackendAPI('/caption', { platform, tone, description, userId });
+  return response.captions || [];
+}
+
+export async function generateYoutubeTitles(topic: string, audience: string, tone: string, userId?: string): Promise<string[]> {
+  const response = await callBackendAPI('/youtube-title', { topic, audience, tone, userId });
+  return response.titles || [];
+}
+
+export async function analyzeATS(resume: string, jobDescription: string, userId?: string): Promise<any> {
+  return await callBackendAPI('/ats-check', { resume, jobDescription, userId });
+}
+
+export async function generateCoverLetter(role: string, company: string, experience: string, tone: string, userId?: string): Promise<{coverLetter: string, wordCount: number}> {
+  return await callBackendAPI('/cover-letter', { role, company, experience, tone, userId });
+}
+
+export async function generateInterviewQuestions(role: string, userId?: string): Promise<{questions: any[]}> {
+  return await callBackendAPI('/interview', { role, userId });
+}
+
 function getCacheKey(prompt: string, systemInstruction: string): string {
   return `${prompt}:${systemInstruction}`;
 }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Youtube, Sparkles, Copy, Check, Loader2, Lightbulb, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { generateAiContent } from '../services/mistralService';
+import { generateYoutubeTitles } from '../services/mistralService';
 import SeoContent from '../components/SeoContent';
 
 export default function YoutubeTitles() {
@@ -19,15 +19,8 @@ export default function YoutubeTitles() {
     setResults([]);
 
     try {
-      const systemPrompt = "You are a YouTube SEO expert. Generate 10 optimized YouTube titles that are engaging, keyword-rich, and optimized for virality and high CTR. Return as a plain list with each title on a new line. Do not number them.";
-      const prompt = `Topic: ${topic}\nAudience: ${audience}\nTone: ${tone}`;
-      
-      const aiText = await generateAiContent(prompt, systemPrompt);
-
-      if (aiText) {
-        const titles = aiText.split('\n').map((t: string) => t.trim()).filter((t: string) => t.length > 5);
-        setResults(titles);
-      }
+      const titles = await generateYoutubeTitles(topic, audience, tone);
+      setResults(titles);
     } catch (error) {
       console.error(error);
       alert(error instanceof Error ? error.message : 'Failed to generate titles');

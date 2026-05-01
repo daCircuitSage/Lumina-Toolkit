@@ -14,7 +14,7 @@ import {
   Search,
   Trophy
 } from 'lucide-react';
-import { generateAiContent } from '../../services/mistralService';
+import { generateInterviewQuestions } from '../../services/mistralService';
 import { cn } from '../../lib/utils';
 import SeoContent from '../../components/SeoContent';
 
@@ -48,16 +48,11 @@ export default function InterviewPrep() {
     `;
 
     try {
-      const responseText = await generateAiContent(prompt, "You help candidates prepare for their dream jobs with high-quality interview drills.");
-      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-         setQuestions(JSON.parse(jsonMatch[0]));
-      } else {
-        throw new Error("Format error");
-      }
+      const response = await generateInterviewQuestions(role);
+      setQuestions(response.questions);
     } catch (error) {
       console.error(error);
-      alert("Failed to reach the coaching engine. Try again.");
+      alert(error instanceof Error ? error.message : "Failed to reach the coaching engine. Try again.");
     } finally {
       setIsGenerating(false);
     }

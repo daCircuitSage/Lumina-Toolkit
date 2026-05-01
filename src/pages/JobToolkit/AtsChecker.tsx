@@ -5,7 +5,7 @@ import {
   RefreshCcw, Loader2, BarChart3, ChevronRight, 
   Upload, X, FileUp, Zap
 } from 'lucide-react';
-import { generateAiContent } from '../../services/mistralService';
+import { analyzeATS } from '../../services/mistralService';
 import { cn } from '../../lib/utils';
 import SeoContent from '../../components/SeoContent';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -88,16 +88,11 @@ export default function AtsChecker() {
     `;
 
     try {
-      const responseText = await generateAiContent(prompt, "You are a senior recruitment specialist and ATS (Applicant Tracking System) expert. Your goal is to help candidates optimize their resumes for machine parsers and human recruiters.");
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        setResult(JSON.parse(jsonMatch[0]));
-      } else {
-        throw new Error("Invalid AI response format");
-      }
+      const analysis = await analyzeATS(resume, jobDescription);
+      setResult(analysis);
     } catch (error) {
       console.error(error);
-      alert("Analysis failed. Please try again.");
+      alert(error instanceof Error ? error.message : "Analysis failed. Please try again.");
     } finally {
       setIsAnalyzing(false);
     }
