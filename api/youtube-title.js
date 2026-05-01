@@ -1,12 +1,36 @@
-import { Mistral } from '@mistralai/mistralai';
+// Dynamic import for Vercel compatibility
+let Mistral;
+let mistral;
 
-const apiKey = process.env.MISTRAL_API_KEY;
+// Initialize Mistral client
+async function initializeMistral() {
+  if (!Mistral) {
+    const module = await import('@mistralai/mistralai');
+    Mistral = module.Mistral;
+  }
+  
+  const apiKey = process.env.MISTRAL_API_KEY;
+  
+  // Debug logging
+  console.log('🔍 YouTube Title API - Environment check:', {
+    hasApiKey: !!apiKey,
+    keyLength: apiKey?.length || 0,
+    nodeEnv: process.env.NODE_ENV,
+    vercelEnv: process.env.VERCEL_ENV
+  });
 
-if (!apiKey) {
-  console.warn('MISTRAL_API_KEY is not configured. YouTube title generator will not work.');
+  if (!apiKey) {
+    console.error('❌ MISTRAL_API_KEY is not configured in environment variables');
+    throw new Error('MISTRAL_API_KEY is not configured');
+  }
+
+  if (!mistral) {
+    mistral = new Mistral({ apiKey });
+    console.log('✅ YouTube Title Mistral client initialized successfully');
+  }
+  
+  return mistral;
 }
-
-const mistral = new Mistral({ apiKey: apiKey || "" });
 
 export default async function handler(req, res) {
   // CORS headers
@@ -29,8 +53,16 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Topic is required' });
     }
 
-    if (!apiKey) {
-      return res.status(500).json({ error: 'AI service not configured' });
+    // Initialize Mistral client
+    let mistralClient;
+    try {
+      mistralClient = await initializeMistral();
+    } catch (initError) {
+      console.error('❌ Failed to initialize Mistral for YouTube Title:', initError);
+      return res.status(500).json({ 
+        error: 'AI service initialization failed',
+        details: initError.message
+      });
     }
 
     const systemPrompt = "You are a YouTube SEO expert. Generate 10 optimized YouTube titles that are engaging, keyword-rich, and optimized for virality and high CTR. Return as a plain list with each title on a new line. Do not number them.";
@@ -41,7 +73,9 @@ Tone: ${tone || 'High CTR'}
 
 Generate 10 compelling YouTube titles for this video content. Make them SEO-friendly and clickable.`;
 
-    const response = await mistral.chat.complete({
+    console.log('🤖 Calling Mistral API for YouTube titles...');
+    
+    const response = await mistralClient.chat.complete({
       model: "mistral-small",
       messages: [
         { role: 'system', content: systemPrompt },

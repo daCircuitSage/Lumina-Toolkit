@@ -1,12 +1,36 @@
-import { Mistral } from '@mistralai/mistralai';
+// Dynamic import for Vercel compatibility
+let Mistral;
+let mistral;
 
-const apiKey = process.env.MISTRAL_API_KEY;
+// Initialize Mistral client
+async function initializeMistral() {
+  if (!Mistral) {
+    const module = await import('@mistralai/mistralai');
+    Mistral = module.Mistral;
+  }
+  
+  const apiKey = process.env.MISTRAL_API_KEY;
+  
+  // Debug logging
+  console.log('🔍 Cover Letter API - Environment check:', {
+    hasApiKey: !!apiKey,
+    keyLength: apiKey?.length || 0,
+    nodeEnv: process.env.NODE_ENV,
+    vercelEnv: process.env.VERCEL_ENV
+  });
 
-if (!apiKey) {
-  console.warn('MISTRAL_API_KEY is not configured. Cover letter generator will not work.');
+  if (!apiKey) {
+    console.error('❌ MISTRAL_API_KEY is not configured in environment variables');
+    throw new Error('MISTRAL_API_KEY is not configured');
+  }
+
+  if (!mistral) {
+    mistral = new Mistral({ apiKey });
+    console.log('✅ Cover Letter Mistral client initialized successfully');
+  }
+  
+  return mistral;
 }
-
-const mistral = new Mistral({ apiKey: apiKey || "" });
 
 export default async function handler(req, res) {
   // CORS headers
@@ -29,8 +53,16 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Role and company are required' });
     }
 
-    if (!apiKey) {
-      return res.status(500).json({ error: 'AI service not configured' });
+    // Initialize Mistral client
+    let mistralClient;
+    try {
+      mistralClient = await initializeMistral();
+    } catch (initError) {
+      console.error('❌ Failed to initialize Mistral for Cover Letter:', initError);
+      return res.status(500).json({ 
+        error: 'AI service initialization failed',
+        details: initError.message
+      });
     }
 
     const systemPrompt = "You are a professional cover letter writer. Create compelling, tailored cover letters that highlight the candidate's strengths and match the company's needs. Write in a professional, engaging tone.";
@@ -51,7 +83,9 @@ Requirements:
 
 Return the complete cover letter without any additional formatting or explanations.`;
 
-    const response = await mistral.chat.complete({
+    console.log('🤖 Calling Mistral API for cover letter...');
+    
+    const response = await mistralClient.chat.complete({
       model: "mistral-small",
       messages: [
         { role: 'system', content: systemPrompt },

@@ -1,12 +1,36 @@
-import { Mistral } from '@mistralai/mistralai';
+// Dynamic import for Vercel compatibility
+let Mistral;
+let mistral;
 
-const apiKey = process.env.MISTRAL_API_KEY;
+// Initialize Mistral client
+async function initializeMistral() {
+  if (!Mistral) {
+    const module = await import('@mistralai/mistralai');
+    Mistral = module.Mistral;
+  }
+  
+  const apiKey = process.env.MISTRAL_API_KEY;
+  
+  // Debug logging
+  console.log('🔍 ATS API - Environment check:', {
+    hasApiKey: !!apiKey,
+    keyLength: apiKey?.length || 0,
+    nodeEnv: process.env.NODE_ENV,
+    vercelEnv: process.env.VERCEL_ENV
+  });
 
-if (!apiKey) {
-  console.warn('MISTRAL_API_KEY is not configured. ATS checker will not work.');
+  if (!apiKey) {
+    console.error('❌ MISTRAL_API_KEY is not configured in environment variables');
+    throw new Error('MISTRAL_API_KEY is not configured');
+  }
+
+  if (!mistral) {
+    mistral = new Mistral({ apiKey });
+    console.log('✅ ATS Mistral client initialized successfully');
+  }
+  
+  return mistral;
 }
-
-const mistral = new Mistral({ apiKey: apiKey || "" });
 
 export default async function handler(req, res) {
   // CORS headers
@@ -29,8 +53,16 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Resume and job description are required' });
     }
 
-    if (!apiKey) {
-      return res.status(500).json({ error: 'AI service not configured' });
+    // Initialize Mistral client
+    let mistralClient;
+    try {
+      mistralClient = await initializeMistral();
+    } catch (initError) {
+      console.error('❌ Failed to initialize Mistral for ATS:', initError);
+      return res.status(500).json({ 
+        error: 'AI service initialization failed',
+        details: initError.message
+      });
     }
 
     const systemPrompt = "You are an expert ATS (Applicant Tracking System) analyzer. Analyze how well a resume matches a job description and provide detailed feedback. Return your analysis as JSON with the following structure: { \"score\": 0-100, \"matchPercentage\": 0-100, \"strengths\": [\"string\"], \"weaknesses\": [\"string\"], \"recommendations\": [\"string\"], \"missingKeywords\": [\"string\"], \"formatFeedback\": \"string\" }";
@@ -45,7 +77,9 @@ ${resume}
 
 Provide a comprehensive ATS analysis with scoring and actionable recommendations.`;
 
-    const response = await mistral.chat.complete({
+    console.log('🤖 Calling Mistral API for ATS analysis...');
+    
+    const response = await mistralClient.chat.complete({
       model: "mistral-small",
       messages: [
         { role: 'system', content: systemPrompt },
@@ -53,6 +87,11 @@ Provide a comprehensive ATS analysis with scoring and actionable recommendations
       ],
       temperature: 0.3,
       maxTokens: 2000
+    });
+
+    console.log('✅ ATS analysis response received:', {
+      responseLength: response.choices?.[0]?.message?.content?.length || 0,
+      model: response.model
     });
 
     const responseText = response.choices?.[0]?.message?.content || '';

@@ -1,14 +1,36 @@
-import { Mistral } from '@mistralai/mistralai';
+// Dynamic import for Vercel compatibility
+let Mistral;
+let mistral;
 
-const apiKey = process.env.MISTRAL_API_KEY;
+// Initialize Mistral client
+async function initializeMistral() {
+  if (!Mistral) {
+    const module = await import('@mistralai/mistralai');
+    Mistral = module.Mistral;
+  }
+  
+  const apiKey = process.env.MISTRAL_API_KEY;
+  
+  // Debug logging
+  console.log('🔍 AI API - Environment check:', {
+    hasApiKey: !!apiKey,
+    keyLength: apiKey?.length || 0,
+    nodeEnv: process.env.NODE_ENV,
+    vercelEnv: process.env.VERCEL_ENV
+  });
 
-if (!apiKey) {
-  console.warn('MISTRAL_API_KEY is not configured. AI features will not work.');
-} else {
-  console.log('MISTRAL_API_KEY is configured, length:', apiKey.length);
+  if (!apiKey) {
+    console.error('❌ MISTRAL_API_KEY is not configured in environment variables');
+    throw new Error('MISTRAL_API_KEY is not configured');
+  }
+
+  if (!mistral) {
+    mistral = new Mistral({ apiKey });
+    console.log('✅ Mistral client initialized successfully');
+  }
+  
+  return mistral;
 }
-
-const mistral = new Mistral({ apiKey: apiKey || "" });
 
 // Cache for API responses
 const responseCache = new Map();
@@ -90,6 +112,12 @@ async function retryWithBackoff(operation, maxRetries = 3, baseDelay = 1000) {
 
 // Main handler function for Vercel
 export default async function handler(req, res) {
+  console.log('🚀 AI API Request:', {
+    method: req.method,
+    url: req.url,
+    userAgent: req.headers['user-agent']
+  });
+
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -113,15 +141,19 @@ export default async function handler(req, res) {
   try {
     // Health check endpoint
     if (endpoint === '/health' && method === 'GET') {
+      const hasApiKey = !!process.env.MISTRAL_API_KEY;
       return res.json({ 
         status: 'ok', 
-        service: apiKey ? 'configured' : 'not_configured',
-        provider: 'mistral'
+        service: hasApiKey ? 'configured' : 'not_configured',
+        provider: 'mistral',
+        environment: process.env.NODE_ENV || 'unknown'
       });
     }
 
     // Chat endpoint
     if (endpoint === '/chat' && method === 'POST') {
+      console.log('💬 Chat endpoint called');
+      
       const { message, history, userId } = req.body;
       
       if (!message) {
@@ -132,8 +164,16 @@ export default async function handler(req, res) {
         return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
       }
 
-      if (!apiKey) {
-        return res.status(500).json({ error: 'AI service not configured' });
+      // Initialize Mistral client
+      let mistralClient;
+      try {
+        mistralClient = await initializeMistral();
+      } catch (initError) {
+        console.error('❌ Failed to initialize Mistral:', initError);
+        return res.status(500).json({ 
+          error: 'AI service initialization failed',
+          details: initError.message
+        });
       }
 
       const systemInstruction = "You are a helpful, intelligent AI assistant inside a productivity SaaS platform called Lumina Toolkit. You help users with writing, coding, learning, and general questions. Keep responses clear, practical, and human-like.";
@@ -141,11 +181,14 @@ export default async function handler(req, res) {
       const cacheKey = getCacheKey(message, systemInstruction);
       const cachedResponse = getCachedResponse(cacheKey);
       if (cachedResponse) {
+        console.log('📋 Using cached response');
         return res.json({ response: cachedResponse });
       }
 
+      console.log('🤖 Calling Mistral API...');
+      
       const response = await retryWithBackoff(async () => {
-        return await mistral.chat.complete({
+        return await mistralClient.chat.complete({
           model: "mistral-small",
           messages: [
             { role: 'system', content: systemInstruction },
@@ -165,6 +208,12 @@ export default async function handler(req, res) {
 
       const responseText = (response.choices?.[0]?.message?.content) || '';
       
+      console.log('✅ Mistral response received:', {
+        responseLength: responseText.length,
+        model: response.model,
+        usage: response.usage
+      });
+      
       if (responseText) {
         setCachedResponse(cacheKey, responseText);
       }
@@ -174,6 +223,8 @@ export default async function handler(req, res) {
 
     // Generate content endpoint
     if (endpoint === '/generate' && method === 'POST') {
+      console.log('📝 Generate endpoint called');
+      
       const { prompt, systemInstruction, userId, options } = req.body;
       
       if (!prompt) {
@@ -184,8 +235,16 @@ export default async function handler(req, res) {
         return res.status(429).json({ error: 'Rate limit exceeded. Please try again later.' });
       }
 
-      if (!apiKey) {
-        return res.status(500).json({ error: 'AI service not configured' });
+      // Initialize Mistral client
+      let mistralClient;
+      try {
+        mistralClient = await initializeMistral();
+      } catch (initError) {
+        console.error('❌ Failed to initialize Mistral:', initError);
+        return res.status(500).json({ 
+          error: 'AI service initialization failed',
+          details: initError.message
+        });
       }
 
       const {
@@ -201,12 +260,15 @@ export default async function handler(req, res) {
         const cacheKey = getCacheKey(prompt, finalSystemInstruction);
         const cachedResponse = getCachedResponse(cacheKey);
         if (cachedResponse) {
+          console.log('📋 Using cached response');
           return res.json({ response: cachedResponse });
         }
       }
 
+      console.log('🤖 Calling Mistral API for generation...');
+      
       const response = await retryWithBackoff(async () => {
-        return await mistral.chat.complete({
+        return await mistralClient.chat.complete({
           model,
           messages: [
             { role: 'system', content: finalSystemInstruction },
@@ -218,6 +280,12 @@ export default async function handler(req, res) {
       });
 
       const responseText = (response.choices?.[0]?.message?.content) || '';
+      
+      console.log('✅ Mistral generation response received:', {
+        responseLength: responseText.length,
+        model: response.model,
+        usage: response.usage
+      });
       
       if (responseText && useCache) {
         setCachedResponse(getCacheKey(prompt, finalSystemInstruction), responseText);
@@ -288,11 +356,39 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: 'Endpoint not found' });
 
   } catch (error) {
-    console.error('API error:', error);
-    const statusCode = error.message.includes('authentication') ? 401 : 
-                      error.message.includes('Rate limit') ? 429 : 500;
+    console.error('🚨 AI API Error:', {
+      error: error.message,
+      stack: error.stack,
+      endpoint: endpoint,
+      method: method
+    });
+
+    // Determine appropriate status code and error message
+    let statusCode = 500;
+    let errorMessage = 'AI service unavailable';
+
+    if (error.message.includes('authentication') || error.message.includes('401')) {
+      statusCode = 401;
+      errorMessage = 'AI service authentication failed. Please check your API key configuration.';
+    } else if (error.message.includes('Rate limit') || error.message.includes('429')) {
+      statusCode = 429;
+      errorMessage = 'AI service rate limit exceeded. Please try again later.';
+    } else if (error.message.includes('quota') || error.message.includes('403')) {
+      statusCode = 403;
+      errorMessage = 'AI service quota exceeded. Please check your plan.';
+    } else if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
+      statusCode = 408;
+      errorMessage = 'AI service request timed out. Please try again.';
+    } else if (error.message.includes('MISTRAL_API_KEY is not configured')) {
+      statusCode = 500;
+      errorMessage = 'AI service not properly configured. Please contact support.';
+    }
+
     return res.status(statusCode).json({ 
-      error: error.message || 'AI service unavailable' 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      endpoint: endpoint,
+      timestamp: new Date().toISOString()
     });
   }
 }
