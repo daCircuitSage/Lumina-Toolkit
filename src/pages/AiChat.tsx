@@ -102,7 +102,7 @@ export default function AiChat() {
             <h1 className="text-sm md:text-lg font-bold text-slate-900 dark:text-white leading-tight">AI Assistant</h1>
             <div className="flex items-center gap-1.5 line-clamp-1">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
-              <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-widest">Gemini Engine</span>
+              <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-widest">Mistral AI</span>
             </div>
           </div>
         </div>

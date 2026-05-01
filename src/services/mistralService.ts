@@ -9,7 +9,7 @@ const RATE_LIMIT_MAX_REQUESTS = 100; // Max requests per minute
 
 // Backend API base URL
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://your-production-domain.com/api/ai'
+  ? '/api'
   : 'http://localhost:3000/api/ai';
 
 export const CHAT_MODEL = "mistral-small"; // Free-tier compatible model
@@ -253,7 +253,7 @@ export async function generateStructuredResponse<T>(
   prompt: string,
   systemInstruction: string,
   userId?: string,
-  options?: Parameters<typeof generateAiContent>[2]
+  options?: { temperature?: number; maxTokens?: number; model?: string; useCache?: boolean }
 ): Promise<T> {
   const response = await generateAiContent(
     prompt + "\n\nIMPORTANT: Respond with valid JSON only, no other text.",
