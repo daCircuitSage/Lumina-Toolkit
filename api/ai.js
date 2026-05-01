@@ -99,11 +99,20 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  // Extract endpoint from URL - handle both /api/ai/endpoint and /endpoint
   const { url, method } = req;
+  let endpoint = url;
+  
+  // Remove /api/ai prefix if present
+  if (endpoint.startsWith('/api/ai/')) {
+    endpoint = endpoint.replace('/api/ai', '');
+  } else if (endpoint.startsWith('/api/ai')) {
+    endpoint = endpoint.replace('/api/ai', '') || '/';
+  }
   
   try {
     // Health check endpoint
-    if (url === '/health' && method === 'GET') {
+    if (endpoint === '/health' && method === 'GET') {
       return res.json({ 
         status: 'ok', 
         service: apiKey ? 'configured' : 'not_configured',
@@ -112,7 +121,7 @@ export default async function handler(req, res) {
     }
 
     // Chat endpoint
-    if (url === '/chat' && method === 'POST') {
+    if (endpoint === '/chat' && method === 'POST') {
       const { message, history, userId } = req.body;
       
       if (!message) {
@@ -164,7 +173,7 @@ export default async function handler(req, res) {
     }
 
     // Generate content endpoint
-    if (url === '/generate' && method === 'POST') {
+    if (endpoint === '/generate' && method === 'POST') {
       const { prompt, systemInstruction, userId, options } = req.body;
       
       if (!prompt) {
@@ -218,7 +227,7 @@ export default async function handler(req, res) {
     }
 
     // Structured response endpoint
-    if (url === '/generate-structured' && method === 'POST') {
+    if (endpoint === '/generate-structured' && method === 'POST') {
       const { prompt, systemInstruction, userId, options } = req.body;
       
       if (!prompt) {

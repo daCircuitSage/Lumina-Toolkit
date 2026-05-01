@@ -11,11 +11,5 @@
       "maxDuration": 10,
       "memory": 512
     }
-  },
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/ai.js"
-    }
-  ]
+  }
 }
